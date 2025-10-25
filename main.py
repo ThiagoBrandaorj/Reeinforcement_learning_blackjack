@@ -1,7 +1,7 @@
 import gymnasium as gym
 env = gym.make('Blackjack-v1', render_mode='human')
 results = []
-num_games = 1000
+num_games = 100
 for game in range(num_games):
     i = 0
     done = False
@@ -26,4 +26,11 @@ for game in range(num_games):
         print(f'Recompa final do episódio: {reward}')
         print(f'observation final do episódio: {observation}')
 env.close()
-print(len(results))
+# contando vitórias, derrotas e empates
+wins = sum(1 for r in results if r > 0)
+losses = sum(1 for r in results if r < 0)
+draws = sum(1 for r in results if r == 0)
+print(f'Total de jogos: {num_games}')
+print(f'Vitórias: {wins}, Derrotas: {losses}, Empates: {draws}')
+aproveitamento = wins / num_games * 100
+print(f'Aproveitamento: {aproveitamento:.2f}%')
