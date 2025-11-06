@@ -6,6 +6,8 @@ import datetime
 import pandas as pd
 import os
 import time
+
+GAMMA = 0.99  # fator de desconto para recompensas futuras
 # Começo da medição do tempo de execução
 start_time = time.time()
 
@@ -13,6 +15,12 @@ start_time = time.time()
 def reward_function(history):
     return np.log(history["portfolio_valuation", -1] / history["portfolio_valuation", -2])
 
+def politica_fixa(observation):
+    return 3  # sempre fica em 0.5 do portfolio (posição 3 na lista [-1, 0, 0.25, 0.5, 0.75, 1])
+
+def retorno_gt_first_visit(reward_total_episodio, estado):
+    if estado in reward_total_episodio.keys():
+        yield estado, reward_total_episodio[estado]
 # cria uma pasta data se não existir
 os.makedirs("data", exist_ok=True)
 
@@ -75,15 +83,36 @@ env = gym.make("TradingEnv",
         borrow_interest_rate=0.0003/100,  # 0.0003% per timestep (one timestep = 1h here)
         reward_function=reward_function,  # custom reward function defined above
     )
+
+env.add_metric('Position Changes', lambda history : np.sum(np.diff(history['position']) != 0) )
 env.add_metric("Episode Length", lambda history: len(history["position"]))
 x = env.action_space
 y = env.observation_space
 print(f"Action space: {x}, Observation space: {y}")
-# Roda um episódio de trading até ele acabar
-done, truncated = False, False
-observation, info = env.reset()
-while not done and not truncated:
-    position_index = env.action_space.sample()  #  A cada passo de tempo pega um índice de posição aleatório da sua lista de posições (=[-1, 0, 0.25, 0.5, 0.75, 1])
-    observation, reward, done, truncated, info = env.step(position_index)
+
+# Inicializar arbitrariamente V(s) para todo s ∈ S.
+# para cada estado no episódio: identificar o primeiro tempo t tal que St = s. e Calcular o retorno:
+# dicionario -> estado: reward (estado em t: recompensa em t+1)
+reward_total_episodio = {}
+# gerando 10 episódios
+for i in range(10):
+    print(f"Iniciando episódio {i+1}")
+    reward_total_episodio = {}
+    done, truncated = False, False
+    observation, info = env.reset()
+    while not done and not truncated:
+        action = politica_fixa(observation)  # Usa a política fixa sempre aposta em 50% do portfólio sempre
+        observation, reward, done, truncated, info = env.step(action)
+        # Armazenar o retorno total para o estado atual
+        estado_atual = observation
+        if estado_atual not in reward_total_episodio:
+            reward_total_episodio[estado_atual] = 0
+        reward_total_episodio[estado_atual] += reward
+
 end_time = time.time()
-print(f"Episode finished in {end_time - start_time:.2f} seconds.")
+print(f"10 episódios finalizados em {end_time - start_time:.2f} segundos.")
+print("Recompensas totais por estado (primeira visita):")
+V = {}
+for estado, recompensa in reward_total_episodio.items():
+    V[estado] = 0
+    print(f"Estado: {estado}, Recompensa: {recompensa}")
