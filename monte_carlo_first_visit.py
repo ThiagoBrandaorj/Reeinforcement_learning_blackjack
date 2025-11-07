@@ -117,10 +117,10 @@ print(f"Action space: {x}, Observation space: {y}")
 
 returns_state = defaultdict(list) 
 returns_sa = defaultdict(list)
-
+V_medio_por_episodio = []
+Q_medio_por_episodio = []
 for ep in range(num_episodes):
     print(f"Iniciando episódio: {ep+1}")
-    
     trajectory = []
     obs,info = env.reset()
     done = truncate = False
@@ -153,6 +153,13 @@ for ep in range(num_episodes):
             # méia dos retornos para Q(s,a)
             returns_sa[(state, action)].append(G)
             Q[(state, action)] = np.mean(returns_sa[(state, action)])
+            
+    # calcular média de V(s) após este episódio
+    media_V = np.mean(list(V.values())) if len(V) > 0 else 0
+    V_medio_por_episodio.append(media_V)
+    # média de Q(s,a) após o episódio
+    media_Q = np.mean(list(Q.values())) if len(Q) > 0 else 0
+    Q_medio_por_episodio.append(media_Q)
 
 end_time = time.time()
 print(f"Tempo de execução: {end_time - start_time} segundos")
@@ -168,16 +175,17 @@ for (s,a),valor in list(Q.items())[:10]:  # apenas os primeiros 10 estados
 states = list(V.keys())
 values = list(V.values())
 plt.figure(figsize=(12, 6))
-plt.scatter(range(len(states)), values, alpha=0.6)
-plt.title("Estimated State-Value Function V(s)")
-plt.xlabel("States")
-plt.ylabel("V(s)")
+plt.plot(V_medio_por_episodio)
+plt.title("Convergência da Média de V(s) por Episódio")
+plt.xlabel("Episódio")
+plt.ylabel("V(s) Médio")
 plt.show()
 actions = list(Q.keys())
 q_values = list(Q.values())
-plt.figure(figsize=(12, 6))
-plt.scatter(range(len(actions)), q_values, alpha=0.6)
-plt.title("Estimated Action-Value Function Q(s,a)")
-plt.xlabel("State-Action Pairs")
-plt.ylabel("Q(s,a)")
+plt.figure(figsize=(12,6))
+plt.plot(Q_medio_por_episodio)
+plt.title("Convergência da Média de Q(s,a) por Episódio")
+plt.xlabel("Episódio")
+plt.ylabel("Q(s,a) Médio")
+plt.grid(True)
 plt.show()
