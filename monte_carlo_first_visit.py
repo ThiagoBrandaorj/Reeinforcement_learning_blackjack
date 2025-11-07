@@ -2,25 +2,50 @@ import gymnasium as gym
 import numpy as np
 import gym_trading_env
 from gym_trading_env.downloader import download
+import random
+import matplotlib.pyplot as plt
 import datetime
 import pandas as pd
 import os
 import time
+from collections import defaultdict
 
-GAMMA = 0.99  # fator de desconto para recompensas futuras
-# Começo da medição do tempo de execução
+# Começo da medição do tempo de execução do código
 start_time = time.time()
+GAMMA = 0.99  # fator de desconto do cálculo do retorno
 
 # Função de recompensa personalizada: log retorno do portfólio
 def reward_function(history):
     return np.log(history["portfolio_valuation", -1] / history["portfolio_valuation", -2])
 
 def politica_fixa(observation):
+    if random.random() < 0.3:
+        return random.randint(0,5)  # ação aleatória 30% do tempo
     return 3  # sempre fica em 0.5 do portfolio (posição 3 na lista [-1, 0, 0.25, 0.5, 0.75, 1])
 
-def retorno_gt_first_visit(reward_total_episodio, estado):
-    if estado in reward_total_episodio.keys():
-        yield estado, reward_total_episodio[estado]
+# Função para discretizar o estado
+def discretize(obs):
+    fc, fo, fh, fl, fv, cp, lp = obs
+    return (
+        round(float(fc), 2),
+        round(float(fo), 2),
+        round(float(fh), 2),
+        round(float(fl), 2),
+        round(float(fv), 2),
+        int(cp),
+        int(lp)
+    )
+
+# Valores de V(s)
+V = {}
+
+# Valores de Q(s,a)
+Q = {}
+
+
+# Número de episodios
+num_episodes = 100
+
 # cria uma pasta data se não existir
 os.makedirs("data", exist_ok=True)
 
@@ -90,29 +115,69 @@ x = env.action_space
 y = env.observation_space
 print(f"Action space: {x}, Observation space: {y}")
 
-# Inicializar arbitrariamente V(s) para todo s ∈ S.
-# para cada estado no episódio: identificar o primeiro tempo t tal que St = s. e Calcular o retorno:
-# dicionario -> estado: reward (estado em t: recompensa em t+1)
-reward_total_episodio = {}
-# gerando 10 episódios
-for i in range(10):
-    print(f"Iniciando episódio {i+1}")
-    reward_total_episodio = {}
-    done, truncated = False, False
-    observation, info = env.reset()
-    while not done and not truncated:
-        action = politica_fixa(observation)  # Usa a política fixa sempre aposta em 50% do portfólio sempre
-        observation, reward, done, truncated, info = env.step(action)
-        # Armazenar o retorno total para o estado atual
-        estado_atual = observation
-        if estado_atual not in reward_total_episodio:
-            reward_total_episodio[estado_atual] = 0
-        reward_total_episodio[estado_atual] += reward
+returns_state = defaultdict(list) 
+returns_sa = defaultdict(list)
+
+for ep in range(num_episodes):
+    print(f"Iniciando episódio: {ep+1}")
+    
+    trajectory = []
+    obs,info = env.reset()
+    done = truncate = False
+    # Coletar trajetória
+    while not done and not truncate:
+        disc_state = discretize(obs)
+        action = politica_fixa(obs)
+        next_obs, reward, done, truncate, info = env.step(action)
+        trajectory.append((disc_state, reward, action))
+        obs = next_obs
+    # Monte carlo first visit
+    visted_states = set()
+    G = 0
+    
+    # Percorre do fim para o início
+    for t in reversed(range(len(trajectory))):
+        state,reward,action = trajectory[t]
+        G = reward + GAMMA * G
+        
+        # First Visit -> só considera a 1ª ocorrência do estado
+        if state not in visted_states:
+            visted_states.add(state)
+            if state not in returns_state:
+                returns_state[state] = []
+            returns_state[state].append(G)
+            
+            # média dos retornos
+            V[state] = np.mean(returns_state[state])
+            
+            # méia dos retornos para Q(s,a)
+            returns_sa[(state, action)].append(G)
+            Q[(state, action)] = np.mean(returns_sa[(state, action)])
 
 end_time = time.time()
-print(f"10 episódios finalizados em {end_time - start_time:.2f} segundos.")
-print("Recompensas totais por estado (primeira visita):")
-V = {}
-for estado, recompensa in reward_total_episodio.items():
-    V[estado] = 0
-    print(f"Estado: {estado}, Recompensa: {recompensa}")
+print(f"Tempo de execução: {end_time - start_time} segundos")
+# resultados
+print("Valores estimados de V(s):")
+for s,valor in list(V.items())[:10]:  # apenas os primeiros 10 estados
+    print(f"Estado: {s}, V(s): {valor}")
+print("Valores estimados de Q(s,a):")
+for (s,a),valor in list(Q.items())[:10]:  # apenas os primeiros 10 estados
+    print(f"Estado: {s}, Ação: {a}, Q(s,a): {valor}")
+    
+# gráficos
+states = list(V.keys())
+values = list(V.values())
+plt.figure(figsize=(12, 6))
+plt.scatter(range(len(states)), values, alpha=0.6)
+plt.title("Estimated State-Value Function V(s)")
+plt.xlabel("States")
+plt.ylabel("V(s)")
+plt.show()
+actions = list(Q.keys())
+q_values = list(Q.values())
+plt.figure(figsize=(12, 6))
+plt.scatter(range(len(actions)), q_values, alpha=0.6)
+plt.title("Estimated Action-Value Function Q(s,a)")
+plt.xlabel("State-Action Pairs")
+plt.ylabel("Q(s,a)")
+plt.show()
